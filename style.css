@@ -1,0 +1,42 @@
+body {
+    background-color: #f4f1ea;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    text-align: center;
+}
+
+h1 {
+    color: #2c3e50;
+    font-size: 48px;
+}
+
+p {
+    color: #555;
+    font-size: 20px;
+}
+.my-image {
+    width: 200px;
+    border-radius: 12px;
+    margin-top: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.my-button {
+    margin-top: 20px;
+    padding: 12px 28px;
+    font-size: 18px;
+    background-color: #2c3e50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.my-button:hover {
+    background-color: #1a252f;
+}
