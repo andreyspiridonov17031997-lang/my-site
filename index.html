@@ -2,16 +2,33 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Мой первый сайт</title>
-  <link rel="stylesheet" href="style.css">  
+    <title>CRM</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>Привет, мир!</h1>
-    <p>Это моя первая веб-страница.</p>
-    
-    <img src="photo.png" alt="Моя картинка" class="my-image">
-    
-    <button class="my-button">Нажми меня</button>
-<script src="script.js"></script>
+    <header class="crm-header">
+        <h1>CRM</h1>
+    </header>
+
+    <main class="crm-content">
+        <div id="client-list" class="client-list"></div>
+        <button id="add-client-btn" class="add-client-button">Добавить клиента</button>
+    </main>
+
+    <div id="add-client-form" class="modal hidden">
+        <div class="modal-content">
+            <h2>Новый клиент</h2>
+            <label>Имя:</label>
+            <input type="text" id="client-name" placeholder="Введите имя">
+            <label>Телефон:</label>
+            <input type="text" id="client-phone" placeholder="+7...">
+            <div class="modal-buttons">
+                <button id="save-client-btn">Сохранить</button>
+                <button id="cancel-client-btn">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
 </body>
-</html
+</html>
