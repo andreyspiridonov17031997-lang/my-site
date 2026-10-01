@@ -7,12 +7,145 @@
 </head>
 <body>
     <header class="crm-header">
+        <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">☰</button>
         <h1>CRM</h1>
     </header>
 
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+    <aside id="sidebar" class="sidebar" aria-hidden="true">
+        <div class="sidebar-heading">
+            <strong>Рабочее пространство</strong>
+            <button id="sidebar-close" type="button" aria-label="Закрыть меню">×</button>
+        </div>
+        <nav class="sidebar-nav">
+            <button type="button" data-nav-target="dashboard">Обзор</button>
+            <button type="button" data-nav-target="clients">Клиенты</button>
+            <button type="button" data-nav-target="all-tasks">Задачи</button>
+            <button type="button" data-nav-target="data-tools">Импорт и экспорт</button>
+            <button type="button" data-nav-target="documents">Документы</button>
+            <button type="button" data-nav-target="settings">Настройки</button>
+        </nav>
+    </aside>
+
     <main class="crm-content">
-        <div id="client-list" class="client-list"></div>
+        <div id="dashboard" class="dashboard-stats">
+            <button class="stat-card stat-card-action" type="button" data-open-task-filter="all">
+                <span class="stat-label">Всего клиентов</span>
+                <strong id="total-clients-count">0</strong>
+            </button>
+            <button class="stat-card stat-card-action" type="button" data-open-client-status="Активен">
+                <span class="stat-label">Активные</span>
+                <strong id="active-clients-count">0</strong>
+            </button>
+            <button class="stat-card stat-card-action" type="button" data-open-task-filter="open">
+                <span class="stat-label">Открытые задачи</span>
+                <strong id="open-tasks-count">0</strong>
+            </button>
+            <button class="stat-card stat-card-warning stat-card-action" type="button" data-open-task-filter="overdue">
+                <span class="stat-label">Просроченные</span>
+                <strong id="overdue-tasks-count">0</strong>
+            </button>
+        </div>
+        <section class="recent-activity-section">
+            <div class="section-heading">
+                <div>
+                    <h2>Последние действия</h2>
+                    <p>Свежие звонки, встречи, сообщения и заметки</p>
+                </div>
+            </div>
+            <div id="recent-activity-list" class="recent-activity-list"></div>
+            <p id="empty-recent-activity" class="empty-message">Действий пока нет</p>
+        </section>
+        <div id="clients-workspace">
+        <div class="client-filters">
+            <input id="client-search" type="search" placeholder="Поиск по имени, компании, телефону...">
+            <select id="status-filter">
+                <option value="all">Все статусы</option>
+                <option value="Новый">Новый</option>
+                <option value="Активен">Активен</option>
+                <option value="В ожидании">В ожидании</option>
+            </select>
+        </div>
+        <p id="clients-count" class="clients-count"></p>
+        <div id="data-tools" class="data-buttons">
+            <button id="export-data-btn" type="button">Сохранить данные</button>
+            <button id="import-data-btn" type="button">Загрузить данные</button>
+            <input id="import-file-input" type="file" accept=".json,application/json" hidden>
+        </div>
+        <div id="clients" class="client-list"></div>
         <button id="add-client-btn" class="add-client-button">Добавить клиента</button>
+        </div>
+
+        <section id="all-tasks" class="all-tasks-section">
+            <div class="section-heading">
+                <div>
+                    <h2>Все задачи</h2>
+                    <p>Общий список задач по всем клиентам</p>
+                </div>
+                <select id="all-tasks-filter" aria-label="Фильтр задач">
+                    <option value="all">Все задачи</option>
+                    <option value="open">Только открытые</option>
+                    <option value="completed">Только завершённые</option>
+                    <option value="overdue">Только просроченные</option>
+                </select>
+                <select id="all-tasks-assignee-filter" aria-label="Фильтр по ответственному">
+                    <option value="all">Все ответственные</option>
+                </select>
+                <select id="all-tasks-priority-filter" aria-label="Фильтр по приоритету">
+                    <option value="all">Любой приоритет</option>
+                    <option value="high">Высокий</option>
+                    <option value="normal">Обычный</option>
+                    <option value="low">Низкий</option>
+                </select>
+                <select id="all-tasks-sort" aria-label="Сортировка задач">
+                    <option value="default">Порядок добавления</option>
+                    <option value="due-date">По сроку</option>
+                    <option value="priority">По приоритету</option>
+                    <option value="name">По названию</option>
+                </select>
+            </div>
+            <div id="all-tasks-list" class="all-tasks-list"></div>
+            <p id="empty-all-tasks" class="empty-message">Задач пока нет</p>
+        </section>
+
+        <section id="documents" class="documents-section">
+            <div class="section-heading">
+                <div>
+                    <h2>Все документы</h2>
+                    <p>Документы, загруженные в карточки клиентов</p>
+                </div>
+            </div>
+            <div class="document-filters">
+                <input id="document-search" type="search" placeholder="Поиск по названию документа...">
+                <select id="document-client-filter">
+                    <option value="all">Все клиенты</option>
+                </select>
+                <select id="document-type-filter">
+                    <option value="all">Все типы файлов</option>
+                    <option value="pdf">PDF</option>
+                    <option value="image">Изображения</option>
+                    <option value="word">Word</option>
+                    <option value="excel">Excel</option>
+                    <option value="other">Другие</option>
+                </select>
+            </div>
+            <div id="all-documents-list" class="all-documents-list"></div>
+            <p id="empty-all-documents" class="empty-message">Документов пока нет</p>
+        </section>
+
+        <section id="settings" class="settings-section">
+            <div class="section-heading">
+                <div>
+                    <h2>Настройки</h2>
+                    <p>Сотрудники, которых можно назначать ответственными</p>
+                </div>
+            </div>
+            <div class="employee-form">
+                <input id="employee-name-input" type="text" placeholder="Имя сотрудника">
+                <button id="add-employee-btn" type="button">Добавить сотрудника</button>
+            </div>
+            <div id="employee-list" class="employee-list"></div>
+        </section>
     </main>
 
     <div id="add-client-form" class="modal hidden">
@@ -22,10 +155,159 @@
             <input type="text" id="client-name" placeholder="Введите имя">
             <label>Телефон:</label>
             <input type="text" id="client-phone" placeholder="+7...">
+            <label>Компания:</label>
+            <input type="text" id="client-company" placeholder="Название компании">
+            <label>Email:</label>
+            <input type="email" id="client-email" placeholder="client@example.com">
+            <label>Ответственный за компанию:</label>
+            <select id="client-assignee">
+                <option value="Не назначен">Не назначен</option>
+                <option value="Алексей">Алексей</option>
+                <option value="Мария">Мария</option>
+                <option value="Иван">Иван</option>
+            </select>
             <div class="modal-buttons">
                 <button id="save-client-btn">Сохранить</button>
                 <button id="cancel-client-btn">Отмена</button>
             </div>
+        </div>
+    </div>
+
+    <div id="client-details" class="modal hidden">
+        <div class="modal-content client-details-content">
+            <button id="close-details-btn" class="close-button" type="button">×</button>
+            <h2 id="details-client-name">Клиент</h2>
+            <button id="edit-client-btn" class="edit-client-button" type="button">Редактировать</button>
+            <div id="client-edit-form" class="client-edit-form hidden">
+                <label>Имя:</label>
+                <input id="edit-client-name" type="text">
+                <label>Компания:</label>
+                <input id="edit-client-company" type="text">
+                <label>Телефон:</label>
+                <input id="edit-client-phone" type="text">
+                <label>Email:</label>
+                <input id="edit-client-email" type="email">
+                <label>Статус:</label>
+                <select id="edit-client-status">
+                    <option value="Новый">Новый</option>
+                    <option value="Активен">Активен</option>
+                    <option value="В ожидании">В ожидании</option>
+                </select>
+                <label>Ответственный за компанию:</label>
+                <select id="edit-client-assignee">
+                    <option value="Не назначен">Не назначен</option>
+                    <option value="Алексей">Алексей</option>
+                    <option value="Мария">Мария</option>
+                    <option value="Иван">Иван</option>
+                </select>
+                <label>Метки через запятую:</label>
+                <input id="edit-client-tags" type="text" placeholder="VIP, Постоянный">
+                <div class="edit-buttons">
+                    <button id="save-client-changes-btn" type="button">Сохранить изменения</button>
+                    <button id="cancel-client-edit-btn" type="button">Отмена</button>
+                </div>
+            </div>
+            <div class="client-details-info">
+                <p><strong>Компания:</strong> <span id="details-client-company"></span></p>
+                <p><strong>Телефон:</strong> <span id="details-client-phone"></span></p>
+                <p><strong>Email:</strong> <span id="details-client-email"></span></p>
+                <p><strong>Статус:</strong> <span id="details-client-status"></span></p>
+                <p><strong>Ответственный:</strong> <span id="details-client-assignee"></span></p>
+                <div class="client-tags-row"><strong>Метки:</strong> <span id="details-client-tags"></span></div>
+            </div>
+            <section class="details-section">
+                <h3>История клиента</h3>
+                <div id="client-history-list" class="client-history-list"></div>
+                <p id="empty-client-history" class="empty-message">Изменений пока нет</p>
+            </section>
+            <button id="delete-client-btn" class="delete-client-button" type="button">Удалить клиента</button>
+            <section class="details-section">
+                <h3>Документы</h3>
+                <div class="document-upload-form">
+                    <input id="document-file-input" type="file">
+                    <button id="upload-document-btn" type="button">Загрузить документ</button>
+                </div>
+                <div id="document-list" class="document-list"></div>
+                <p id="empty-document-message" class="empty-message">Документов пока нет</p>
+            </section>
+            <section class="details-section">
+                <h3>Задачи</h3>
+                <div class="task-form">
+                    <input type="text" id="task-input" placeholder="Например: подготовить договор">
+                    <input type="date" id="task-due-date" aria-label="Срок выполнения">
+                    <select id="task-priority" aria-label="Приоритет задачи">
+                        <option value="low">Низкий</option>
+                        <option value="normal" selected>Обычный</option>
+                        <option value="high">Высокий</option>
+                    </select>
+                    <select id="task-assignee" aria-label="Ответственный">
+                        <option value="Не назначен">Не назначен</option>
+                        <option value="Алексей">Алексей</option>
+                        <option value="Мария">Мария</option>
+                        <option value="Иван">Иван</option>
+                    </select>
+                    <button id="add-task-btn" type="button">Добавить</button>
+                </div>
+                <select id="task-sort" class="task-sort" aria-label="Сортировка задач">
+                    <option value="default">Порядок добавления</option>
+                    <option value="overdue">Сначала просроченные</option>
+                    <option value="priority">Сначала высокий приоритет</option>
+                    <option value="due-date">Сначала ближайший срок</option>
+                    <option value="open">Сначала незавершённые</option>
+                </select>
+                <div id="task-list" class="task-list"></div>
+                <p id="empty-task-message" class="empty-message">Задач пока нет</p>
+            </section>
+            <section class="details-section">
+                <h3>История взаимодействий</h3>
+                <p id="empty-interaction-message" class="empty-message">Открой задачу, чтобы добавить действие</p>
+            </section>
+        </div>
+    </div>
+
+    <div id="task-details" class="modal hidden">
+        <div class="modal-content client-details-content">
+            <button id="close-task-details-btn" class="close-button" type="button">×</button>
+            <h2 id="details-task-name">Задача</h2>
+            <p id="details-task-meta" class="task-hint"></p>
+            <p class="task-hint">Вся история работы именно по этой задаче.</p>
+            <section class="details-section task-edit-section">
+                <h3>Данные задачи</h3>
+                <div class="task-edit-form">
+                    <input id="edit-task-text" type="text" placeholder="Название задачи">
+                    <input id="edit-task-due-date" type="date">
+                    <select id="edit-task-priority">
+                        <option value="low">Низкий</option>
+                        <option value="normal">Обычный</option>
+                        <option value="high">Высокий</option>
+                    </select>
+                    <select id="edit-task-assignee">
+                        <option value="Не назначен">Не назначен</option>
+                        <option value="Алексей">Алексей</option>
+                        <option value="Мария">Мария</option>
+                        <option value="Иван">Иван</option>
+                    </select>
+                    <select id="edit-task-status">
+                        <option value="new">Новая</option>
+                        <option value="in-progress">В работе</option>
+                        <option value="paused">На паузе</option>
+                        <option value="completed">Завершена</option>
+                    </select>
+                    <button id="save-task-changes-btn" type="button">Сохранить изменения</button>
+                </div>
+            </section>
+            <section class="details-section">
+                <h3>Комментарий</h3>
+                <div class="interaction-form">
+                    <textarea id="interaction-text" placeholder="Напишите комментарий..."></textarea>
+                    <button id="add-interaction-btn" type="button">Добавить комментарий</button>
+                </div>
+            </section>
+            <section class="details-section">
+                <h3>История задачи</h3>
+                <div id="interaction-list" class="interaction-list"></div>
+                <p id="empty-task-interaction-message" class="empty-message">Записей пока нет</p>
+            </section>
         </div>
     </div>
 
