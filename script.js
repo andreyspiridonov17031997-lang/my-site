@@ -1,7 +1,34 @@
 // Ключ — имя, под которым список будет храниться в браузере.
 const STORAGE_KEY = 'crm-clients';
 const EMPLOYEES_STORAGE_KEY = 'crm-employees';
+const GENERAL_TASKS_STORAGE_KEY = 'crm-general-tasks';
+const MESSAGES_STORAGE_KEY = 'crm-messages';
+const CURRENT_USER_STORAGE_KEY = 'crm-current-user-v2';
+const DATA_SCHEMA_VERSION = 1;
 const defaultEmployees = ['Алексей', 'Мария', 'Иван'];
+
+// Единый слой хранения. Позже его можно заменить на запросы к API,
+// не меняя логику экранов и форм CRM.
+const crmStorage = {
+    get: function(key, fallback) {
+        try {
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : JSON.parse(value);
+        } catch (error) {
+            console.error('Не удалось прочитать данные CRM:', key, error);
+            return fallback;
+        }
+    },
+    set: function(key, value) {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+            return true;
+        } catch (error) {
+            console.error('Не удалось сохранить данные CRM:', key, error);
+            return false;
+        }
+    }
+};
 
 // Начальные примеры показываем только при первом запуске CRM.
 const defaultClients = [
@@ -13,29 +40,274 @@ const defaultClients = [
 // Загружаем сохранённый список. Если его ещё нет или он повреждён,
 // используем начальные примеры, не останавливая работу приложения.
 function loadClients() {
-    try {
-        const savedClients = localStorage.getItem(STORAGE_KEY);
-        return savedClients ? JSON.parse(savedClients) : defaultClients;
-    } catch (error) {
-        console.error('Не удалось загрузить клиентов:', error);
-        return defaultClients;
-    }
+    return crmStorage.get(STORAGE_KEY, defaultClients);
 }
 
 const clients = loadClients();
-let employees = loadEmployees();
+let employees = loadEmployees().map(function(employee) {
+    return typeof employee === 'string'
+        ? { name: employee, position: '', phone: '', email: '', status: 'Активен', note: '', role: employee === defaultEmployees[0] ? 'manager' : 'employee' }
+        : {
+            name: employee.name || '',
+            position: employee.position || '',
+            phone: employee.phone || '',
+            email: employee.email || '',
+            status: employee.status || 'Активен',
+            note: employee.note || '',
+            role: employee.role === 'manager' ? 'manager' : 'employee'
+        };
+});
+let generalTasks = loadGeneralTasks();
+let messages = loadMessages();
+let selectedMessageEmployee = '';
+const defaultManager = employees.find(function(employee) {
+    return employee.role === 'manager';
+});
+let currentUserName = crmStorage.get(CURRENT_USER_STORAGE_KEY, '')
+    || (defaultManager ? defaultManager.name : (employees[0] ? employees[0].name : ''));
+
+if (!employees.some(function(employee) { return employee.name === currentUserName; })) {
+    currentUserName = employees[0] ? employees[0].name : '';
+}
+
+function getCurrentUser() {
+    return employees.find(function(employee) {
+        return employee.name === currentUserName;
+    }) || null;
+}
+
+function isManager() {
+    const currentUser = getCurrentUser();
+    return Boolean(currentUser && currentUser.role === 'manager');
+}
+
+function getRoleLabel(role) {
+    return role === 'manager' ? 'Руководитель' : 'Сотрудник';
+}
+
+function saveCurrentUser() {
+    crmStorage.set(CURRENT_USER_STORAGE_KEY, currentUserName);
+}
+
+function renderCurrentUser() {
+    const select = document.querySelector('#current-user-select');
+    const role = document.querySelector('#current-user-role');
+    const accessNotice = document.querySelector('#settings-access-notice');
+    select.innerHTML = '';
+    employees.forEach(function(employee) {
+        const option = document.createElement('option');
+        option.value = employee.name;
+        option.textContent = employee.name;
+        select.appendChild(option);
+    });
+    select.value = currentUserName;
+    const currentUser = getCurrentUser();
+    role.textContent = currentUser ? getRoleLabel(currentUser.role) : 'Нет пользователя';
+    document.body.classList.toggle('user-is-manager', isManager());
+    document.querySelector('[data-nav-target="settings"]').classList.toggle('hidden', !isManager());
+    accessNotice.textContent = isManager()
+        ? ''
+        : 'Режим просмотра. Добавлять, изменять и удалять сотрудников может только руководитель.';
+    accessNotice.classList.toggle('hidden', isManager());
+}
+
+function ensureSettingsAccess() {
+    if (isManager()) {
+        return true;
+    }
+    alert('Настройки сотрудников доступны только руководителю');
+    document.body.dataset.view = 'dashboard';
+    return false;
+}
+
+function loadMessages() {
+    return crmStorage.get(MESSAGES_STORAGE_KEY, []);
+}
+
+function saveMessages() {
+    crmStorage.set(MESSAGES_STORAGE_KEY, messages);
+}
+
+function loadGeneralTasks() {
+    return crmStorage.get(GENERAL_TASKS_STORAGE_KEY, []);
+}
+
+function saveGeneralTasks() {
+    crmStorage.set(GENERAL_TASKS_STORAGE_KEY, generalTasks);
+}
 
 function loadEmployees() {
-    try {
-        const savedEmployees = localStorage.getItem(EMPLOYEES_STORAGE_KEY);
-        return savedEmployees ? JSON.parse(savedEmployees) : defaultEmployees.slice();
-    } catch (error) {
-        return defaultEmployees.slice();
-    }
+    return crmStorage.get(EMPLOYEES_STORAGE_KEY, defaultEmployees.slice());
 }
 
 function saveEmployees() {
-    localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
+    crmStorage.set(EMPLOYEES_STORAGE_KEY, employees);
+}
+
+function renderMessages() {
+    const messageList = document.querySelector('#message-list');
+    const emptyMessage = document.querySelector('#empty-message-list');
+    const sender = messageCurrentUser.value;
+    const recipient = selectedMessageEmployee;
+    const conversation = messages.filter(function(message) {
+        return (message.from === sender && message.to === recipient)
+            || (message.from === recipient && message.to === sender);
+    });
+
+    conversation.forEach(function(message) {
+        if (message.to === sender) {
+            if (!Array.isArray(message.readBy)) {
+                message.readBy = [];
+            }
+            if (!message.readBy.includes(sender)) {
+                message.readBy.push(sender);
+            }
+        }
+    });
+    saveMessages();
+
+    messageList.innerHTML = '';
+    messageChatTitle.textContent = recipient || 'Выберите сотрудника';
+    messageChatSubtitle.textContent = recipient
+        ? 'Переписка доступна только сотрудникам CRM'
+        : 'Чтобы начать переписку';
+    messageText.disabled = !sender || !recipient;
+    sendMessageBtn.disabled = !sender || !recipient;
+    emptyMessage.classList.toggle('hidden', conversation.length > 0);
+    conversation.forEach(function(message) {
+        const item = document.createElement('article');
+        item.className = 'message-item' + (message.from === sender ? ' message-own' : '');
+        const author = document.createElement('strong');
+        author.textContent = message.from;
+        if (message.text) {
+            const text = document.createElement('p');
+            text.textContent = message.text;
+            item.appendChild(text);
+        }
+        if (message.attachment) {
+            const attachment = document.createElement('a');
+            attachment.className = 'message-attachment';
+            attachment.href = message.attachment.data;
+            attachment.download = message.attachment.name;
+            attachment.textContent = '📎 ' + message.attachment.name;
+            item.appendChild(attachment);
+        }
+        if (message.sharedItem) {
+            const sharedItem = document.createElement('button');
+            sharedItem.type = 'button';
+            sharedItem.className = 'message-shared-item';
+            sharedItem.textContent = (message.sharedItem.type === 'client' ? '👤 ' : '✓ ')
+                + message.sharedItem.title + ' · ' + message.sharedItem.subtitle;
+            sharedItem.addEventListener('click', function() {
+                openSharedMessageItem(message.sharedItem);
+            });
+            item.appendChild(sharedItem);
+        }
+        const date = document.createElement('small');
+        date.textContent = new Date(message.timestamp).toLocaleString('ru-RU');
+        item.insertBefore(author, item.firstChild);
+        item.appendChild(date);
+        messageList.appendChild(item);
+    });
+    messageList.scrollTop = messageList.scrollHeight;
+    updateMessageNavBadge();
+}
+
+function getUnreadMessageCount(employeeName, currentUser) {
+    return messages.filter(function(message) {
+        return message.to === currentUser
+            && message.from === employeeName
+            && (!Array.isArray(message.readBy) || !message.readBy.includes(currentUser));
+    }).length;
+}
+
+function updateMessageNavBadge() {
+    const messagesNavButton = document.querySelector('[data-nav-target="messages"]');
+    if (!messagesNavButton) {
+        return;
+    }
+    let badge = messagesNavButton.querySelector('.unread-badge');
+    const unreadCount = employees.reduce(function(total, employee) {
+        return total + getUnreadMessageCount(employee.name, messageCurrentUser.value);
+    }, 0);
+    if (unreadCount === 0) {
+        if (badge) badge.remove();
+        return;
+    }
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'unread-badge';
+        messagesNavButton.appendChild(badge);
+    }
+    badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+}
+
+function openSharedMessageItem(sharedItem) {
+    if (sharedItem.type === 'client' && Number.isInteger(sharedItem.clientIndex)
+        && clients[sharedItem.clientIndex]) {
+        openClientDetails(sharedItem.clientIndex);
+        return;
+    }
+
+    if (sharedItem.type === 'task' && sharedItem.generalIndex !== undefined) {
+        alert('Эта общая задача не привязана к карточке клиента');
+        return;
+    }
+
+    if (sharedItem.type === 'task' && Number.isInteger(sharedItem.clientIndex)
+        && Number.isInteger(sharedItem.taskIndex)
+        && clients[sharedItem.clientIndex]
+        && clients[sharedItem.clientIndex].tasks[sharedItem.taskIndex]) {
+        openClientDetails(sharedItem.clientIndex);
+        openTaskDetails(sharedItem.taskIndex);
+    }
+}
+
+function renderMessageEmployees() {
+    const selectedSender = messageCurrentUser.value;
+    const searchText = messageSearch.value.trim().toLowerCase();
+    messageCurrentUser.innerHTML = '';
+    employees.forEach(function(employee) {
+        const option = document.createElement('option');
+        option.value = employee.name;
+        option.textContent = employee.name;
+        messageCurrentUser.appendChild(option);
+    });
+    if (employees.length > 0) {
+        messageCurrentUser.value = employees.some(function(employee) { return employee.name === selectedSender; })
+            ? selectedSender : employees[0].name;
+    }
+    if (selectedMessageEmployee === messageCurrentUser.value) {
+        selectedMessageEmployee = '';
+    }
+    messageEmployeeList.innerHTML = '';
+    employees
+        .filter(function(employee) {
+            return employee.name.toLowerCase().includes(searchText)
+                && employee.name !== messageCurrentUser.value;
+        })
+        .forEach(function(employee) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'message-employee-button'
+                + (employee.name === selectedMessageEmployee ? ' active' : '');
+            button.textContent = employee.name;
+            const unreadCount = getUnreadMessageCount(employee.name, messageCurrentUser.value);
+            if (unreadCount > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'employee-unread-badge';
+                badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+                button.appendChild(badge);
+            }
+            button.addEventListener('click', function() {
+                selectedMessageEmployee = employee.name;
+                renderMessages();
+                renderMessageEmployees();
+                messageText.focus();
+            });
+            messageEmployeeList.appendChild(button);
+        });
+    renderMessages();
 }
 
 // У старых клиентов ещё может не быть массива задач.
@@ -84,7 +356,7 @@ clients.forEach(function(client) {
 
 // Сохраняем текущий список в браузере.
 function saveClients() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+    crmStorage.set(STORAGE_KEY, clients);
 }
 
 // 2. Функция, которая рисует всех клиентов на странице
@@ -102,6 +374,22 @@ function renderClients() {
         const matchesStatus = selectedStatus === 'all' || client.status === selectedStatus;
         return matchesSearch && matchesStatus;
     });
+
+    if (clientSort.value === 'name') {
+        filteredClients.sort(function(a, b) {
+            return a.name.localeCompare(b.name, 'ru');
+        });
+    } else if (clientSort.value === 'company') {
+        filteredClients.sort(function(a, b) {
+            return (a.company || '').localeCompare(b.company || '', 'ru');
+        });
+    } else if (clientSort.value === 'status') {
+        filteredClients.sort(function(a, b) {
+            return a.status.localeCompare(b.status, 'ru') || a.name.localeCompare(b.name, 'ru');
+        });
+    } else if (clientSort.value === 'newest') {
+        filteredClients.reverse();
+    }
 
     list.innerHTML = ''; // очищаем перед перерисовкой
     clientsCount.textContent = 'Найдено клиентов: ' + filteredClients.length;
@@ -128,6 +416,10 @@ function renderClients() {
             </div>
             <span class="client-status">${client.status}</span>
         `;
+        const clientAssignee = card.querySelector('.client-responsible');
+        makeEmployeeLink(clientAssignee, client.assignee, function(event) {
+            event.stopPropagation();
+        });
         card.addEventListener('click', function() {
             openClientDetails(clientIndex);
         });
@@ -149,6 +441,21 @@ function renderAllTasks() {
     const selectedAssignee = allTasksAssigneeFilter.value;
     const selectedPriority = allTasksPriorityFilter.value;
     const allTasks = [];
+
+    generalTasks.forEach(function(task, taskIndex) {
+        const isOverdue = !task.completed && task.dueDate && task.dueDate < getTodayDate();
+        const isDueToday = !task.completed && task.dueDate === getTodayDate();
+        const isDueTomorrow = !task.completed && task.dueDate === getTomorrowDate();
+        const matchesFilter = selectedFilter === 'all'
+            || (selectedFilter === 'open' && task.status !== 'completed')
+            || (selectedFilter === 'completed' && task.status === 'completed')
+            || (selectedFilter === 'overdue' && isOverdue);
+        const matchesAssignee = selectedAssignee === 'all' || task.assignee === selectedAssignee;
+        const matchesPriority = selectedPriority === 'all' || task.priority === selectedPriority;
+        if (matchesFilter && matchesAssignee && matchesPriority) {
+            allTasks.push({ task, taskIndex, isGeneral: true, isOverdue, isDueToday, isDueTomorrow });
+        }
+    });
 
     clients.forEach(function(client, clientIndex) {
         client.tasks.forEach(function(task, taskIndex) {
@@ -192,6 +499,7 @@ function renderAllTasks() {
         const taskCard = document.createElement('button');
         taskCard.type = 'button';
         taskCard.className = 'all-task-card';
+        taskCard.dataset.generalTaskIndex = item.isGeneral ? item.taskIndex : '';
         if (item.isDueToday) taskCard.classList.add('due-today');
         if (item.isDueTomorrow) taskCard.classList.add('due-tomorrow');
 
@@ -199,15 +507,39 @@ function renderAllTasks() {
         title.textContent = item.task.text;
 
         const clientName = document.createElement('span');
-        clientName.textContent = item.client.company || item.client.name;
+        clientName.textContent = item.isGeneral ? 'Без клиента' : (item.client.company || item.client.name);
 
         const details = document.createElement('span');
         const dueLabel = item.isDueToday ? 'Сегодня · срок: '
             : (item.isDueTomorrow ? 'Завтра · срок: ' : 'Срок: ');
         details.textContent = (item.task.dueDate
             ? dueLabel + formatTaskDate(item.task.dueDate) : 'Без срока')
-            + ' · ' + getPriorityLabel(item.task.priority)
-            + ' · ' + item.task.assignee;
+            + ' · ' + getPriorityLabel(item.task.priority);
+
+        const taskAssignee = document.createElement('button');
+        taskAssignee.type = 'button';
+        taskAssignee.className = 'employee-link task-assignee-link';
+        taskAssignee.textContent = item.task.assignee;
+        taskAssignee.addEventListener('click', function(event) {
+            event.stopPropagation();
+            openEmployeeDetails(item.task.assignee);
+        });
+
+        const completeButton = document.createElement('button');
+        completeButton.type = 'button';
+        completeButton.className = 'all-task-complete-button';
+        completeButton.textContent = item.task.completed ? 'Вернуть' : 'Завершить';
+        completeButton.addEventListener('click', function(event) {
+            event.stopPropagation();
+            item.task.completed = !item.task.completed;
+            item.task.status = item.task.completed ? 'completed' : 'in-progress';
+            if (item.isGeneral) {
+                saveGeneralTasks();
+            } else {
+                saveClients();
+            }
+            renderAllTasks();
+        });
 
         const status = document.createElement('span');
         status.className = 'all-task-status';
@@ -221,10 +553,12 @@ function renderAllTasks() {
         status.textContent = item.task.status === 'completed'
             ? 'Завершена' : (item.isOverdue ? 'Просрочена' : getTaskStatusLabel(item.task.status));
 
-        taskCard.append(title, clientName, details, status);
+        taskCard.append(title, clientName, details, taskAssignee, status, completeButton);
         taskCard.addEventListener('click', function() {
-            openClientDetails(item.clientIndex);
-            openTaskDetails(item.taskIndex);
+            if (!item.isGeneral) {
+                openClientDetails(item.clientIndex);
+                openTaskDetails(item.taskIndex);
+            }
         });
         taskList.appendChild(taskCard);
     });
@@ -252,7 +586,189 @@ function renderDashboardStats() {
     }).length;
     document.querySelector('#open-tasks-count').textContent = openTasks;
     document.querySelector('#overdue-tasks-count').textContent = overdueTasks;
+    renderTaskAttention();
     renderRecentActivity();
+    renderReports();
+}
+
+function renderReportBars(elementId, values) {
+    const container = document.querySelector('#' + elementId);
+    const max = Math.max.apply(null, values.map(function(item) { return item.value; }).concat([1]));
+    container.innerHTML = '';
+    values.forEach(function(item) {
+        const row = document.createElement('div');
+        row.className = 'report-bar-row';
+        const label = document.createElement('span');
+        label.textContent = item.label;
+        const track = document.createElement('div');
+        track.className = 'report-bar-track';
+        const fill = document.createElement('div');
+        fill.className = 'report-bar-fill';
+        fill.style.width = (item.value / max * 100) + '%';
+        track.appendChild(fill);
+        const count = document.createElement('strong');
+        count.textContent = item.value;
+        row.append(label, track, count);
+        container.appendChild(row);
+    });
+}
+
+function renderReports() {
+    let openTasks = 0;
+    let completedTasks = 0;
+    let overdueTasks = 0;
+    const clientStatuses = { 'Новый': 0, 'Активен': 0, 'В ожидании': 0 };
+    const taskStatuses = { 'Открытые': 0, 'Завершённые': 0, 'Просроченные': 0 };
+    const activityByEmployee = {};
+
+    clients.forEach(function(client) {
+        clientStatuses[client.status] = (clientStatuses[client.status] || 0) + 1;
+        client.tasks.forEach(function(task) {
+            if (task.completed) {
+                completedTasks += 1;
+                taskStatuses['Завершённые'] += 1;
+            } else {
+                openTasks += 1;
+                taskStatuses['Открытые'] += 1;
+                if (task.dueDate && task.dueDate < getTodayDate()) {
+                    overdueTasks += 1;
+                    taskStatuses['Просроченные'] += 1;
+                }
+            }
+            if (task.assignee && task.assignee !== 'Не назначен') {
+                activityByEmployee[task.assignee] = (activityByEmployee[task.assignee] || 0) + 1;
+            }
+            task.interactions.forEach(function(interaction) {
+                if (interaction.employee && interaction.employee !== 'Не назначен') {
+                    activityByEmployee[interaction.employee] = (activityByEmployee[interaction.employee] || 0) + 1;
+                }
+            });
+        });
+    });
+
+    document.querySelector('#report-total-clients').textContent = clients.length;
+    document.querySelector('#report-open-tasks').textContent = openTasks;
+    document.querySelector('#report-completed-tasks').textContent = completedTasks;
+    document.querySelector('#report-overdue-tasks').textContent = overdueTasks;
+    renderReportBars('client-status-report', Object.keys(clientStatuses).map(function(label) {
+        return { label: label, value: clientStatuses[label] };
+    }));
+    renderReportBars('task-status-report', Object.keys(taskStatuses).map(function(label) {
+        return { label: label, value: taskStatuses[label] };
+    }));
+
+    const activityList = document.querySelector('#employee-activity-report');
+    const emptyActivity = document.querySelector('#empty-employee-report');
+    activityList.innerHTML = '';
+    const activityEntries = Object.keys(activityByEmployee).sort(function(a, b) {
+        return activityByEmployee[b] - activityByEmployee[a];
+    });
+    emptyActivity.classList.toggle('hidden', activityEntries.length > 0);
+    activityEntries.forEach(function(name) {
+        const item = document.createElement('div');
+        item.className = 'employee-report-item';
+        const employee = document.createElement('strong');
+        employee.textContent = name;
+        const count = document.createElement('span');
+        count.textContent = 'Задач и действий: ' + activityByEmployee[name];
+        item.append(employee, count);
+        activityList.appendChild(item);
+    });
+
+    renderChangeHistoryReport();
+}
+
+function renderChangeHistoryReport() {
+    const list = document.querySelector('#change-history-report');
+    const emptyMessage = document.querySelector('#empty-change-history-report');
+    const changes = [];
+    clients.forEach(function(client) {
+        (client.history || []).forEach(function(historyItem) {
+            changes.push({
+                date: historyItem.date || '',
+                text: (client.company || client.name) + ': ' + historyItem.text
+            });
+        });
+        client.tasks.forEach(function(task) {
+            (task.interactions || []).forEach(function(interaction) {
+                changes.push({
+                    date: interaction.date || interaction.timestamp || '',
+                    text: (client.company || client.name) + ': ' + interaction.text
+                });
+            });
+        });
+    });
+    changes.sort(function(a, b) {
+        return String(b.date).localeCompare(String(a.date));
+    });
+    list.innerHTML = '';
+    emptyMessage.classList.toggle('hidden', changes.length > 0);
+    changes.slice(0, 12).forEach(function(change) {
+        const item = document.createElement('div');
+        item.className = 'change-history-item';
+        const date = document.createElement('time');
+        date.textContent = change.date || 'Дата не указана';
+        const text = document.createElement('span');
+        text.textContent = change.text;
+        item.append(date, text);
+        list.appendChild(item);
+    });
+}
+
+function renderTaskAttention() {
+    const list = document.querySelector('#task-attention-list');
+    const emptyMessage = document.querySelector('#empty-task-attention');
+    const attentionTasks = [];
+
+    clients.forEach(function(client, clientIndex) {
+        client.tasks.forEach(function(task, taskIndex) {
+            if (task.completed || !task.dueDate) {
+                return;
+            }
+            const isOverdue = task.dueDate < getTodayDate();
+            const isToday = task.dueDate === getTodayDate();
+            if (isOverdue || isToday) {
+                attentionTasks.push({
+                    client: client,
+                    clientIndex: clientIndex,
+                    task: task,
+                    taskIndex: taskIndex,
+                    isOverdue: isOverdue
+                });
+            }
+        });
+    });
+
+    attentionTasks.sort(function(a, b) {
+        if (a.isOverdue !== b.isOverdue) {
+            return a.isOverdue ? -1 : 1;
+        }
+        return a.task.dueDate.localeCompare(b.task.dueDate);
+    });
+
+    list.innerHTML = '';
+    emptyMessage.classList.toggle('hidden', attentionTasks.length > 0);
+    attentionTasks.slice(0, 8).forEach(function(item) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'task-attention-item' + (item.isOverdue ? '' : ' task-due-today');
+
+        const info = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = item.task.text;
+        const clientName = document.createElement('span');
+        clientName.textContent = item.client.company || item.client.name;
+        info.append(title, clientName);
+
+        const label = document.createElement('small');
+        label.textContent = item.isOverdue ? 'Просрочена' : 'Сегодня';
+        button.append(info, label);
+        button.addEventListener('click', function() {
+            openClientDetails(item.clientIndex);
+            openTaskDetails(item.taskIndex);
+        });
+        list.appendChild(button);
+    });
 }
 
 function renderRecentActivity() {
@@ -317,7 +833,7 @@ function openClientDetails(clientIndex) {
     detailsClientPhone.textContent = client.phone;
     detailsClientEmail.textContent = client.email || 'Не указан';
     detailsClientStatus.textContent = client.status;
-    detailsClientAssignee.textContent = client.assignee;
+    makeEmployeeLink(detailsClientAssignee, client.assignee);
     renderClientTags(client.tags);
     renderClientHistory();
     renderDocuments();
@@ -405,7 +921,7 @@ function renderDocuments() {
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
         deleteButton.textContent = 'Удалить';
-        deleteButton.addEventListener('click', function() {
+        deleteButton.addEventListener('click', function(event) {
             client.documents.splice(documentIndex, 1);
             addClientHistory(client, 'Удалён документ: ' + documentFile.name);
             saveClients();
@@ -572,8 +1088,12 @@ function renderTasks() {
         taskMeta.append(dueDate, priority);
 
         const assignee = document.createElement('span');
-        assignee.className = 'task-assignee';
+        assignee.className = 'task-assignee employee-link';
         assignee.textContent = task.assignee;
+        assignee.addEventListener('click', function(event) {
+            event.stopPropagation();
+            openEmployeeDetails(task.assignee);
+        });
         taskMeta.append(assignee);
 
         const status = document.createElement('span');
@@ -596,22 +1116,13 @@ function renderTasks() {
             renderTasks();
         });
 
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.textContent = 'Удалить';
-        deleteButton.addEventListener('click', function() {
-            client.tasks.splice(taskIndex, 1);
-            saveClients();
-            renderTasks();
-        });
-
-        taskElement.append(checkbox, taskText, taskMeta, completeButton, deleteButton);
+        taskElement.append(checkbox, taskText, taskMeta, completeButton);
         taskList.appendChild(taskElement);
     });
 }
 
 function renderEmployeeOptions() {
-    const selectIds = ['client-assignee', 'edit-client-assignee', 'task-assignee', 'edit-task-assignee'];
+    const selectIds = ['client-assignee', 'edit-client-assignee', 'task-assignee', 'edit-task-assignee', 'general-task-assignee'];
 
     selectIds.forEach(function(selectId) {
         const select = document.querySelector('#' + selectId);
@@ -620,12 +1131,13 @@ function renderEmployeeOptions() {
 
         employees.forEach(function(employee) {
             const option = document.createElement('option');
-            option.value = employee;
-            option.textContent = employee;
+            option.value = employee.name;
+            option.textContent = employee.name;
             select.appendChild(option);
         });
 
-        select.value = employees.includes(selectedValue) ? selectedValue : 'Не назначен';
+        select.value = employees.some(function(employee) { return employee.name === selectedValue; })
+            ? selectedValue : 'Не назначен';
     });
 
     const assigneeFilter = document.querySelector('#all-tasks-assignee-filter');
@@ -635,7 +1147,11 @@ function renderEmployeeOptions() {
     const taskAssignees = clients.flatMap(function(client) {
         return client.tasks.map(function(task) { return task.assignee; });
     });
-    const availableAssignees = Array.from(new Set(employees.concat(taskAssignees)))
+    generalTasks.forEach(function(task) {
+        taskAssignees.push(task.assignee);
+    });
+    const employeeNames = employees.map(function(employee) { return employee.name; });
+    const availableAssignees = Array.from(new Set(employeeNames.concat(taskAssignees)))
         .filter(function(name) { return name && name !== 'Не назначен'; })
         .sort(function(a, b) { return a.localeCompare(b, 'ru'); });
 
@@ -652,30 +1168,80 @@ function renderEmployeeOptions() {
 }
 
 function renderEmployees() {
+    if (!isManager()) {
+        return;
+    }
     const employeeList = document.querySelector('#employee-list');
     employeeList.innerHTML = '';
 
     employees.forEach(function(employee, employeeIndex) {
         const item = document.createElement('div');
         item.className = 'employee-item';
+        item.addEventListener('click', function() {
+            openEmployeeDetails(employee.name);
+        });
 
-        const name = document.createElement('span');
-        name.textContent = employee;
+        const information = document.createElement('div');
+        information.className = 'employee-information';
+
+        const name = document.createElement('strong');
+        name.textContent = employee.name;
+
+        const details = document.createElement('span');
+        details.textContent = [employee.position, employee.phone, employee.email]
+            .filter(Boolean).join(' · ') || 'Контактные данные не заполнены';
+
+        const note = document.createElement('small');
+        note.textContent = employee.note || 'Без заметки';
+
+        const status = document.createElement('span');
+        status.className = 'employee-status employee-status-' + (employee.status === 'Активен' ? 'active' : 'inactive');
+        status.textContent = employee.status;
+
+        information.append(name, details, note);
 
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
         deleteButton.textContent = 'Удалить';
-        deleteButton.addEventListener('click', function() {
-            if (!confirm('Удалить сотрудника «' + employee + '» из списка?')) {
+        deleteButton.addEventListener('click', function(event) {
+            event.stopPropagation();
+            if (!confirm('Удалить сотрудника «' + employee.name + '» из списка?')) {
                 return;
             }
             employees.splice(employeeIndex, 1);
+            if (employee.name === currentUserName) {
+                currentUserName = employees[0] ? employees[0].name : '';
+                saveCurrentUser();
+            }
             saveEmployees();
             renderEmployees();
             renderEmployeeOptions();
+            renderMessageEmployees();
+            renderCurrentUser();
         });
 
-        item.append(name, deleteButton);
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.textContent = 'Изменить';
+        editButton.addEventListener('click', function(event) {
+            event.stopPropagation();
+            employeeNameInput.value = employee.name;
+            employeePositionInput.value = employee.position;
+            employeePhoneInput.value = employee.phone;
+            employeeEmailInput.value = employee.email;
+            employeeRoleInput.value = employee.role;
+            employeeStatusInput.value = employee.status;
+            employeeNoteInput.value = employee.note;
+            editingEmployeeIndex = employeeIndex;
+            addEmployeeBtn.textContent = 'Сохранить изменения';
+            cancelEmployeeEditBtn.classList.remove('hidden');
+            employeeNameInput.focus();
+        });
+
+        const actions = document.createElement('div');
+        actions.className = 'employee-actions';
+        actions.append(editButton, deleteButton);
+        item.append(information, status, actions);
         employeeList.appendChild(item);
     });
 }
@@ -800,8 +1366,8 @@ function openTaskDetails(taskIndex) {
     detailsTaskName.textContent = task.text;
     const dueDateText = task.dueDate ? 'Срок: ' + formatTaskDate(task.dueDate) : 'Без срока';
     detailsTaskMeta.textContent = dueDateText + ' · Статус: ' + getTaskStatusLabel(task.status)
-        + ' · Приоритет: ' + getPriorityLabel(task.priority)
-        + ' · Ответственный: ' + task.assignee;
+        + ' · Приоритет: ' + getPriorityLabel(task.priority);
+    makeEmployeeLink(detailsTaskAssignee, task.assignee);
     editTaskText.value = task.text;
     editTaskDueDate.value = task.dueDate;
     editTaskPriority.value = task.priority;
@@ -813,6 +1379,40 @@ function openTaskDetails(taskIndex) {
 
 function closeTaskDetails() {
     taskDetailsModal.classList.add('hidden');
+}
+
+function makeEmployeeLink(element, employeeName, extraHandler) {
+    element.textContent = employeeName;
+    element.classList.add('employee-link');
+    element.onclick = function(event) {
+        event.stopPropagation();
+        if (extraHandler) {
+            extraHandler(event);
+        }
+        openEmployeeDetails(employeeName);
+    };
+}
+
+function openEmployeeDetails(employeeName) {
+    const employee = employees.find(function(item) {
+        return item.name === employeeName;
+    });
+
+    if (!employee) {
+        return;
+    }
+
+    detailsEmployeeName.textContent = employee.name;
+    detailsEmployeePosition.textContent = employee.position || 'Не указана';
+    detailsEmployeePhone.textContent = employee.phone || 'Не указан';
+    detailsEmployeeEmail.textContent = employee.email || 'Не указан';
+    detailsEmployeeStatus.textContent = employee.status || 'Не указан';
+    detailsEmployeeNote.textContent = employee.note || 'Нет заметки';
+    employeeDetailsModal.classList.remove('hidden');
+}
+
+function closeEmployeeDetails() {
+    employeeDetailsModal.classList.add('hidden');
 }
 
 function closeClientDetails() {
@@ -837,6 +1437,15 @@ const detailsClientPhone = document.querySelector('#details-client-phone');
 const detailsClientEmail = document.querySelector('#details-client-email');
 const detailsClientStatus = document.querySelector('#details-client-status');
 const detailsClientAssignee = document.querySelector('#details-client-assignee');
+const detailsTaskAssignee = document.querySelector('#details-task-assignee');
+const employeeDetailsModal = document.querySelector('#employee-details');
+const closeEmployeeDetailsBtn = document.querySelector('#close-employee-details-btn');
+const detailsEmployeeName = document.querySelector('#details-employee-name');
+const detailsEmployeePosition = document.querySelector('#details-employee-position');
+const detailsEmployeePhone = document.querySelector('#details-employee-phone');
+const detailsEmployeeEmail = document.querySelector('#details-employee-email');
+const detailsEmployeeStatus = document.querySelector('#details-employee-status');
+const detailsEmployeeNote = document.querySelector('#details-employee-note');
 const documentFileInput = document.querySelector('#document-file-input');
 const uploadDocumentBtn = document.querySelector('#upload-document-btn');
 const deleteClientBtn = document.querySelector('#delete-client-btn');
@@ -875,6 +1484,7 @@ const importDataBtn = document.querySelector('#import-data-btn');
 const importFileInput = document.querySelector('#import-file-input');
 const clientSearch = document.querySelector('#client-search');
 const statusFilter = document.querySelector('#status-filter');
+const clientSort = document.querySelector('#client-sort');
 const clientsCount = document.querySelector('#clients-count');
 const allTasksFilter = document.querySelector('#all-tasks-filter');
 const allTasksAssigneeFilter = document.querySelector('#all-tasks-assignee-filter');
@@ -887,12 +1497,364 @@ const sidebar = document.querySelector('#sidebar');
 const sidebarBackdrop = document.querySelector('#sidebar-backdrop');
 const menuToggle = document.querySelector('#menu-toggle');
 const sidebarClose = document.querySelector('#sidebar-close');
+const globalSearch = document.querySelector('#global-search');
+const globalSearchResults = document.querySelector('#global-search-results');
 const employeeNameInput = document.querySelector('#employee-name-input');
+const employeePositionInput = document.querySelector('#employee-position-input');
+const employeePhoneInput = document.querySelector('#employee-phone-input');
+const employeeEmailInput = document.querySelector('#employee-email-input');
+const employeeRoleInput = document.querySelector('#employee-role-input');
+const employeeStatusInput = document.querySelector('#employee-status-input');
+const employeeNoteInput = document.querySelector('#employee-note-input');
 const addEmployeeBtn = document.querySelector('#add-employee-btn');
+const addGeneralTaskBtn = document.querySelector('#add-general-task-btn');
+const generalTaskModal = document.querySelector('#general-task-form');
+const closeGeneralTaskBtn = document.querySelector('#close-general-task-btn');
+const cancelGeneralTaskBtn = document.querySelector('#cancel-general-task-btn');
+const saveGeneralTaskBtn = document.querySelector('#save-general-task-btn');
+const generalTaskText = document.querySelector('#general-task-text');
+const generalTaskDueDate = document.querySelector('#general-task-due-date');
+const generalTaskPriority = document.querySelector('#general-task-priority');
+const generalTaskAssignee = document.querySelector('#general-task-assignee');
+const messageCurrentUser = document.querySelector('#message-current-user');
+const messageSearch = document.querySelector('#message-search');
+const messageEmployeeList = document.querySelector('#message-employee-list');
+const messageChatTitle = document.querySelector('#message-chat-title');
+const messageChatSubtitle = document.querySelector('#message-chat-subtitle');
+const messageText = document.querySelector('#message-text');
+const sendMessageBtn = document.querySelector('#send-message-btn');
+const attachMessageFileBtn = document.querySelector('#attach-message-file-btn');
+const messageFileInput = document.querySelector('#message-file-input');
+const shareMessageItemBtn = document.querySelector('#share-message-item-btn');
+const shareMessageModal = document.querySelector('#share-message-modal');
+const closeShareMessageBtn = document.querySelector('#close-share-message-btn');
+const cancelShareMessageBtn = document.querySelector('#cancel-share-message-btn');
+const confirmShareMessageBtn = document.querySelector('#confirm-share-message-btn');
+const shareMessageType = document.querySelector('#share-message-type');
+const shareMessageItem = document.querySelector('#share-message-item');
+const cancelEmployeeEditBtn = document.querySelector('#cancel-employee-edit-btn');
 let currentClientIndex = null;
 let currentTaskIndex = null;
 
+function closeGlobalSearch() {
+    globalSearchResults.classList.add('hidden');
+}
+
+function addGlobalSearchResult(results, type, title, subtitle, openResult) {
+    results.push({ type: type, title: title, subtitle: subtitle, open: openResult });
+}
+
+function renderGlobalSearchResults() {
+    const query = globalSearch.value.trim().toLowerCase();
+    globalSearchResults.innerHTML = '';
+    if (query === '') {
+        closeGlobalSearch();
+        return;
+    }
+
+    const results = [];
+    clients.forEach(function(client, clientIndex) {
+        const clientText = [client.name, client.company, client.phone, client.email].join(' ').toLowerCase();
+        if (clientText.includes(query)) {
+            addGlobalSearchResult(results, 'client', client.company || client.name,
+                'Клиент · ' + client.name, function() {
+                    openClientDetails(clientIndex);
+                });
+        }
+        client.tasks.forEach(function(task, taskIndex) {
+            if ((task.text + ' ' + (client.company || client.name)).toLowerCase().includes(query)) {
+                addGlobalSearchResult(results, 'task', task.text,
+                    'Задача · ' + (client.company || client.name), function() {
+                        openClientDetails(clientIndex);
+                        openTaskDetails(taskIndex);
+                    });
+            }
+        });
+    });
+    generalTasks.forEach(function(task, taskIndex) {
+        if (task.text.toLowerCase().includes(query)) {
+            addGlobalSearchResult(results, 'task', task.text, 'Общая задача', function() {
+                alert('Эта задача не привязана к карточке клиента');
+            });
+        }
+    });
+    employees.forEach(function(employee) {
+        if ([employee.name, employee.position, employee.email].join(' ').toLowerCase().includes(query)) {
+            addGlobalSearchResult(results, 'employee', employee.name,
+                'Сотрудник · ' + (employee.position || 'Должность не указана'), function() {
+                    openEmployeeDetails(employee.name);
+                });
+        }
+    });
+    messages.forEach(function(message) {
+        if ((message.text + ' ' + message.from + ' ' + message.to).toLowerCase().includes(query)) {
+            addGlobalSearchResult(results, 'message', message.text || 'Вложение или запись',
+                'Сообщение · ' + message.from + ' → ' + message.to, function() {
+                    document.body.dataset.view = 'messages';
+                    messageCurrentUser.value = message.from;
+                    selectedMessageEmployee = message.to;
+                    renderMessageEmployees();
+                    renderMessages();
+                });
+        }
+    });
+
+    if (results.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'global-search-empty';
+        empty.textContent = 'Ничего не найдено';
+        globalSearchResults.appendChild(empty);
+    } else {
+        results.slice(0, 30).forEach(function(result) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'global-search-result';
+            const title = document.createElement('strong');
+            title.textContent = result.title;
+            const subtitle = document.createElement('span');
+            subtitle.textContent = result.subtitle;
+            button.append(title, subtitle);
+            button.addEventListener('click', function() {
+                result.open();
+                globalSearch.value = '';
+                closeGlobalSearch();
+            });
+            globalSearchResults.appendChild(button);
+        });
+    }
+    globalSearchResults.classList.remove('hidden');
+}
+
+globalSearch.addEventListener('input', renderGlobalSearchResults);
+document.addEventListener('click', function(event) {
+    if (!event.target.closest('.global-search-wrap')) {
+        closeGlobalSearch();
+    }
+});
+
+function closeGeneralTaskForm() {
+    generalTaskModal.classList.add('hidden');
+}
+
+addGeneralTaskBtn.addEventListener('click', function() {
+    renderEmployeeOptions();
+    generalTaskModal.classList.remove('hidden');
+    generalTaskText.focus();
+});
+
+messageCurrentUser.addEventListener('change', function() {
+    renderMessageEmployees();
+});
+messageSearch.addEventListener('input', renderMessageEmployees);
+
+sendMessageBtn.addEventListener('click', function() {
+    const text = messageText.value.trim();
+
+    if (messageCurrentUser.value === '' || selectedMessageEmployee === '') {
+        alert('Добавьте сотрудников в разделе «Настройки»');
+        return;
+    }
+
+    if (text === '') {
+        alert('Напишите сообщение');
+        messageText.focus();
+        return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage
+        && lastMessage.from === messageCurrentUser.value
+        && lastMessage.to === selectedMessageEmployee
+        && lastMessage.text === text
+        && Date.now() - new Date(lastMessage.timestamp).getTime() < 5000) {
+        alert('Такое сообщение уже было отправлено');
+        return;
+    }
+
+    messages.push({
+        from: messageCurrentUser.value,
+        to: selectedMessageEmployee,
+        text: text,
+        timestamp: new Date().toISOString()
+    });
+    saveMessages();
+    messageText.value = '';
+    renderMessages();
+    messageText.focus();
+});
+
+messageText.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessageBtn.click();
+    }
+});
+
+function canSendMessage() {
+    if (!messageCurrentUser.value || !selectedMessageEmployee) {
+        alert('Сначала выберите сотрудника для переписки');
+        return false;
+    }
+    return true;
+}
+
+function sendChatMessage(extraData) {
+    if (!canSendMessage()) {
+        return;
+    }
+    messages.push(Object.assign({
+        from: messageCurrentUser.value,
+        to: selectedMessageEmployee,
+        text: '',
+        timestamp: new Date().toISOString()
+    }, extraData));
+    saveMessages();
+    renderMessages();
+}
+
+attachMessageFileBtn.addEventListener('click', function() {
+    if (canSendMessage()) {
+        messageFileInput.click();
+    }
+});
+
+messageFileInput.addEventListener('change', function() {
+    const file = messageFileInput.files[0];
+    if (!file) {
+        return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+        alert('Размер файла не должен превышать 2 МБ');
+        messageFileInput.value = '';
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        sendChatMessage({
+            attachment: {
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                data: event.target.result
+            }
+        });
+        messageFileInput.value = '';
+    };
+    reader.readAsDataURL(file);
+});
+
+function renderShareMessageOptions() {
+    const selectedType = shareMessageType.value;
+    shareMessageItem.innerHTML = '';
+    if (selectedType === 'client') {
+        clients.forEach(function(client, index) {
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = client.company ? client.company + ' — ' + client.name : client.name;
+            shareMessageItem.appendChild(option);
+        });
+    } else {
+        clients.forEach(function(client, clientIndex) {
+            client.tasks.forEach(function(task, taskIndex) {
+                const option = document.createElement('option');
+                option.value = clientIndex + ':' + taskIndex;
+                option.textContent = task.text + ' — ' + (client.company || client.name);
+                shareMessageItem.appendChild(option);
+            });
+        });
+        generalTasks.forEach(function(task, taskIndex) {
+            const option = document.createElement('option');
+            option.value = 'general:' + taskIndex;
+            option.textContent = task.text + ' — без клиента';
+            shareMessageItem.appendChild(option);
+        });
+    }
+    confirmShareMessageBtn.disabled = shareMessageItem.options.length === 0;
+}
+
+shareMessageItemBtn.addEventListener('click', function() {
+    if (!canSendMessage()) {
+        return;
+    }
+    renderShareMessageOptions();
+    shareMessageModal.classList.remove('hidden');
+});
+
+shareMessageType.addEventListener('change', renderShareMessageOptions);
+closeShareMessageBtn.addEventListener('click', function() {
+    shareMessageModal.classList.add('hidden');
+});
+cancelShareMessageBtn.addEventListener('click', function() {
+    shareMessageModal.classList.add('hidden');
+});
+shareMessageModal.addEventListener('click', function(event) {
+    if (event.target === shareMessageModal) {
+        shareMessageModal.classList.add('hidden');
+    }
+});
+
+confirmShareMessageBtn.addEventListener('click', function() {
+    if (!shareMessageItem.value) {
+        return;
+    }
+    const type = shareMessageType.value;
+    let sharedItem;
+    if (type === 'client') {
+        const client = clients[Number(shareMessageItem.value)];
+        sharedItem = { type: 'client', clientIndex: Number(shareMessageItem.value), title: client.company || client.name, subtitle: client.company ? client.name : client.phone };
+    } else if (shareMessageItem.value.indexOf('general:') === 0) {
+        const task = generalTasks[Number(shareMessageItem.value.replace('general:', ''))];
+        sharedItem = { type: 'task', generalIndex: Number(shareMessageItem.value.replace('general:', '')), title: task.text, subtitle: 'Общая задача' };
+    } else {
+        const indexes = shareMessageItem.value.split(':').map(Number);
+        const task = clients[indexes[0]].tasks[indexes[1]];
+        const client = clients[indexes[0]];
+        sharedItem = { type: 'task', clientIndex: indexes[0], taskIndex: indexes[1], title: task.text, subtitle: client.company || client.name };
+    }
+    sendChatMessage({ sharedItem: sharedItem });
+    shareMessageModal.classList.add('hidden');
+});
+
+closeGeneralTaskBtn.addEventListener('click', closeGeneralTaskForm);
+cancelGeneralTaskBtn.addEventListener('click', closeGeneralTaskForm);
+generalTaskModal.addEventListener('click', function(event) {
+    if (event.target === generalTaskModal) closeGeneralTaskForm();
+});
+
+saveGeneralTaskBtn.addEventListener('click', function() {
+    const text = generalTaskText.value.trim();
+    if (text === '') {
+        alert('Напиши текст задачи');
+        return;
+    }
+    if (generalTasks.some(function(task) {
+        return !task.completed && task.text.trim().toLowerCase() === text.toLowerCase();
+    })) {
+        alert('Такая открытая общая задача уже существует');
+        return;
+    }
+    generalTasks.push({
+        text: text,
+        completed: false,
+        dueDate: generalTaskDueDate.value,
+        priority: generalTaskPriority.value,
+        assignee: generalTaskAssignee.value,
+        status: 'new',
+        interactions: []
+    });
+    saveGeneralTasks();
+    generalTaskText.value = '';
+    generalTaskDueDate.value = '';
+    generalTaskPriority.value = 'normal';
+    generalTaskAssignee.value = 'Не назначен';
+    closeGeneralTaskForm();
+    renderAllTasks();
+});
+let editingEmployeeIndex = null;
+
 addEmployeeBtn.addEventListener('click', function() {
+    if (!ensureSettingsAccess()) {
+        return;
+    }
     const employeeName = employeeNameInput.value.trim();
 
     if (employeeName === '') {
@@ -900,17 +1862,50 @@ addEmployeeBtn.addEventListener('click', function() {
         return;
     }
 
-    if (employees.includes(employeeName)) {
+    if (employees.some(function(employee, index) {
+        return employee.name === employeeName && index !== editingEmployeeIndex;
+    })) {
         alert('Такой сотрудник уже есть');
         return;
     }
 
-    employees.push(employeeName);
+    const employeeData = {
+        name: employeeName,
+        position: employeePositionInput.value.trim(),
+        phone: employeePhoneInput.value.trim(),
+        email: employeeEmailInput.value.trim(),
+        role: employeeRoleInput.value,
+        status: employeeStatusInput.value,
+        note: employeeNoteInput.value.trim()
+    };
+
+    if (editingEmployeeIndex === null) {
+        employees.push(employeeData);
+    } else {
+        employees[editingEmployeeIndex] = employeeData;
+    }
     saveEmployees();
-    employeeNameInput.value = '';
+    resetEmployeeForm();
     renderEmployees();
     renderEmployeeOptions();
+    renderMessageEmployees();
+    renderCurrentUser();
 });
+
+function resetEmployeeForm() {
+    employeeNameInput.value = '';
+    employeePositionInput.value = '';
+    employeePhoneInput.value = '';
+    employeeEmailInput.value = '';
+    employeeRoleInput.value = 'employee';
+    employeeStatusInput.value = 'Активен';
+    employeeNoteInput.value = '';
+    editingEmployeeIndex = null;
+    addEmployeeBtn.textContent = 'Добавить сотрудника';
+    cancelEmployeeEditBtn.classList.add('hidden');
+}
+
+cancelEmployeeEditBtn.addEventListener('click', resetEmployeeForm);
 
 
 uploadDocumentBtn.addEventListener('click', function() {
@@ -975,6 +1970,9 @@ sidebarBackdrop.addEventListener('click', function() {
 document.querySelectorAll('[data-nav-target]').forEach(function(button) {
     button.addEventListener('click', function() {
         const targetName = button.dataset.navTarget;
+        if (targetName === 'settings' && !ensureSettingsAccess()) {
+            return;
+        }
         const view = targetName === 'data-tools'
             ? 'clients'
             : (targetName === 'all-tasks' ? 'tasks' : targetName);
@@ -1000,6 +1998,16 @@ document.querySelectorAll('[data-nav-target]').forEach(function(button) {
 });
 
 document.body.dataset.view = 'dashboard';
+renderCurrentUser();
+
+document.querySelector('#current-user-select').addEventListener('change', function(event) {
+    currentUserName = event.target.value;
+    saveCurrentUser();
+    renderCurrentUser();
+    if (document.body.dataset.view === 'settings' && !isManager()) {
+        document.body.dataset.view = 'dashboard';
+    }
+});
 
 document.querySelectorAll('[data-open-task-filter]').forEach(function(card) {
     card.addEventListener('click', function() {
@@ -1033,6 +2041,7 @@ taskSort.addEventListener('change', renderTasks);
 
 clientSearch.addEventListener('input', renderClients);
 statusFilter.addEventListener('change', renderClients);
+clientSort.addEventListener('change', renderClients);
 allTasksFilter.addEventListener('change', renderAllTasks);
 allTasksAssigneeFilter.addEventListener('change', renderAllTasks);
 allTasksPriorityFilter.addEventListener('change', renderAllTasks);
@@ -1044,6 +2053,7 @@ documentTypeFilter.addEventListener('change', renderAllDocuments);
 // Рисуем начальный список после того, как подключили поля поиска и фильтр.
 statusFilter.value = 'all';
 renderEmployeeOptions();
+renderMessageEmployees();
 renderClients();
 renderAllTasks();
 
@@ -1072,6 +2082,20 @@ saveClientChangesBtn.addEventListener('click', function() {
 
     if (name === '' || phone === '') {
         alert('Имя и телефон не могут быть пустыми');
+        return;
+    }
+
+    const duplicateClient = clients.some(function(existingClient, index) {
+        if (index === currentClientIndex) {
+            return false;
+        }
+        const samePhone = existingClient.phone.trim() === phone;
+        const sameEmail = editClientEmail.value.trim() !== ''
+            && existingClient.email.trim().toLowerCase() === editClientEmail.value.trim().toLowerCase();
+        return samePhone || sameEmail;
+    });
+    if (duplicateClient) {
+        alert('Клиент с таким телефоном или email уже существует');
         return;
     }
 
@@ -1169,6 +2193,13 @@ addTaskBtn.addEventListener('click', function() {
         return;
     }
 
+    if (clients[currentClientIndex].tasks.some(function(task) {
+        return !task.completed && task.text.trim().toLowerCase() === taskText.toLowerCase();
+    })) {
+        alert('Такая открытая задача у этого клиента уже существует');
+        return;
+    }
+
     clients[currentClientIndex].tasks.push({
         text: taskText,
         completed: false,
@@ -1212,6 +2243,14 @@ addInteractionBtn.addEventListener('click', function() {
 
 closeTaskDetailsBtn.addEventListener('click', closeTaskDetails);
 
+closeEmployeeDetailsBtn.addEventListener('click', closeEmployeeDetails);
+
+employeeDetailsModal.addEventListener('click', function(event) {
+    if (event.target === employeeDetailsModal) {
+        closeEmployeeDetails();
+    }
+});
+
 taskDetailsModal.addEventListener('click', function(event) {
     if (event.target === taskDetailsModal) {
         closeTaskDetails();
@@ -1223,6 +2262,16 @@ saveTaskChangesBtn.addEventListener('click', function() {
 
     if (taskText === '') {
         alert('Название задачи не может быть пустым');
+        return;
+    }
+
+    const duplicateTask = clients[currentClientIndex].tasks.some(function(existingTask, index) {
+        return index !== currentTaskIndex
+            && !existingTask.completed
+            && existingTask.text.trim().toLowerCase() === taskText.toLowerCase();
+    });
+    if (duplicateTask) {
+        alert('Такая открытая задача у этого клиента уже существует');
         return;
     }
 
@@ -1240,16 +2289,96 @@ saveTaskChangesBtn.addEventListener('click', function() {
     renderTasks();
 });
 
-// Сохраняем всех клиентов в отдельный JSON-файл.
-exportDataBtn.addEventListener('click', function() {
-    const data = JSON.stringify(clients, null, 2);
-    const file = new Blob([data], { type: 'application/json' });
-    const downloadLink = document.createElement('a');
+function createBackupData() {
+    return {
+        format: 'crm-local-backup',
+        version: DATA_SCHEMA_VERSION,
+        createdAt: new Date().toISOString(),
+        clients: clients,
+        employees: employees,
+        generalTasks: generalTasks,
+        messages: messages
+    };
+}
 
+function downloadBackup(data, fileName) {
+    const file = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const downloadLink = document.createElement('a');
     downloadLink.href = URL.createObjectURL(file);
-    downloadLink.download = 'crm-clients.json';
+    downloadLink.download = fileName;
     downloadLink.click();
     URL.revokeObjectURL(downloadLink.href);
+}
+
+function normalizeImportedClients(importedClients) {
+    if (!Array.isArray(importedClients)) {
+        throw new Error('Список клиентов отсутствует или имеет неверный формат');
+    }
+    return importedClients.map(function(client) {
+        if (!client || typeof client.name !== 'string'
+            || typeof client.phone !== 'string' || typeof client.status !== 'string') {
+            throw new Error('У каждого клиента должны быть имя, телефон и статус');
+        }
+        return {
+            name: client.name.trim(),
+            phone: client.phone.trim(),
+            company: typeof client.company === 'string' ? client.company : '',
+            email: typeof client.email === 'string' ? client.email : '',
+            assignee: typeof client.assignee === 'string' ? client.assignee : 'Не назначен',
+            tags: Array.isArray(client.tags) ? client.tags : [],
+            history: Array.isArray(client.history) ? client.history : [],
+            documents: Array.isArray(client.documents) ? client.documents : [],
+            status: client.status,
+            tasks: Array.isArray(client.tasks) ? client.tasks.filter(function(task) {
+                return task && typeof task.text === 'string';
+            }).map(function(task) {
+                return {
+                    text: task.text,
+                    completed: Boolean(task.completed),
+                    dueDate: typeof task.dueDate === 'string' ? task.dueDate : '',
+                    priority: ['low', 'normal', 'high'].includes(task.priority) ? task.priority : 'normal',
+                    assignee: typeof task.assignee === 'string' ? task.assignee : 'Не назначен',
+                    status: ['new', 'in-progress', 'paused', 'completed'].includes(task.status)
+                        ? task.status : (task.completed ? 'completed' : 'new'),
+                    interactions: Array.isArray(task.interactions) ? task.interactions : []
+                };
+            }) : []
+        };
+    });
+}
+
+function normalizeImportedEmployees(importedEmployees) {
+    if (!Array.isArray(importedEmployees)) {
+        return defaultEmployees.map(function(name) {
+            return {
+                name: name,
+                position: '',
+                phone: '',
+                email: '',
+                status: 'Активен',
+                note: '',
+                role: name === defaultEmployees[0] ? 'manager' : 'employee'
+            };
+        });
+    }
+    return importedEmployees.filter(function(employee) {
+        return employee && typeof employee.name === 'string' && employee.name.trim() !== '';
+    }).map(function(employee) {
+        return {
+            name: employee.name.trim(),
+            position: typeof employee.position === 'string' ? employee.position : '',
+            phone: typeof employee.phone === 'string' ? employee.phone : '',
+            email: typeof employee.email === 'string' ? employee.email : '',
+            role: employee.role === 'manager' || employee.name === defaultEmployees[0] ? 'manager' : 'employee',
+            status: typeof employee.status === 'string' ? employee.status : 'Активен',
+            note: typeof employee.note === 'string' ? employee.note : ''
+        };
+    });
+}
+
+// Сохраняем все локальные данные CRM в одном резервном файле.
+exportDataBtn.addEventListener('click', function() {
+    downloadBackup(createBackupData(), 'crm-backup-' + new Date().toISOString().slice(0, 10) + '.json');
 });
 
 // Открываем системное окно выбора файла.
@@ -1257,7 +2386,7 @@ importDataBtn.addEventListener('click', function() {
     importFileInput.click();
 });
 
-// Читаем выбранный JSON-файл и заменяем им текущий список клиентов.
+// Читаем резервную копию и заменяем локальные данные после подтверждения.
 importFileInput.addEventListener('change', function() {
     const file = importFileInput.files[0];
 
@@ -1269,57 +2398,32 @@ importFileInput.addEventListener('change', function() {
 
     reader.onload = function(event) {
         try {
-            const importedClients = JSON.parse(event.target.result);
+            const importedData = JSON.parse(event.target.result);
+            const backup = Array.isArray(importedData) ? { clients: importedData } : importedData;
+            const importedClients = normalizeImportedClients(backup.clients);
+            const importedEmployees = normalizeImportedEmployees(backup.employees);
+            const importedGeneralTasks = Array.isArray(backup.generalTasks) ? backup.generalTasks : [];
+            const importedMessages = Array.isArray(backup.messages) ? backup.messages : [];
 
-            if (!Array.isArray(importedClients)) {
-                throw new Error('Файл должен содержать список клиентов');
-            }
-
-            const validClients = importedClients.every(function(client) {
-                return client && typeof client.name === 'string'
-                    && typeof client.phone === 'string'
-                    && typeof client.status === 'string';
-            });
-
-            if (!validClients) {
-                throw new Error('У клиентов должны быть имя, телефон и статус');
+            if (!confirm('Текущие локальные данные будут заменены данными из файла. Продолжить?')) {
+                return;
             }
 
             clients.length = 0;
-            importedClients.forEach(function(client) {
-                clients.push({
-                    name: client.name,
-                    phone: client.phone,
-                    company: typeof client.company === 'string' ? client.company : '',
-                    email: typeof client.email === 'string' ? client.email : '',
-                    assignee: typeof client.assignee === 'string' ? client.assignee : 'Не назначен',
-                    tags: Array.isArray(client.tags) ? client.tags : [],
-                    history: Array.isArray(client.history) ? client.history : [],
-                    documents: Array.isArray(client.documents) ? client.documents : [],
-                    status: client.status,
-                    tasks: Array.isArray(client.tasks) ? client.tasks
-                        .filter(function(task) {
-                            return task && typeof task.text === 'string';
-                        })
-                        .map(function(task) {
-                            return {
-                                text: task.text,
-                                completed: Boolean(task.completed),
-                                dueDate: typeof task.dueDate === 'string' ? task.dueDate : '',
-                                priority: ['low', 'normal', 'high'].includes(task.priority)
-                                    ? task.priority : 'normal',
-                                assignee: typeof task.assignee === 'string' ? task.assignee : 'Не назначен',
-                                status: ['new', 'in-progress', 'paused', 'completed'].includes(task.status)
-                                    ? task.status : (task.completed ? 'completed' : 'new'),
-                                interactions: Array.isArray(task.interactions) ? task.interactions : []
-                            };
-                        }) : []
-                });
-            });
+            importedClients.forEach(function(client) { clients.push(client); });
+            employees = importedEmployees;
+            generalTasks = importedGeneralTasks;
+            messages = importedMessages;
 
             saveClients();
+            saveEmployees();
+            saveGeneralTasks();
+            saveMessages();
             renderClients();
-            alert('Данные успешно загружены');
+            renderEmployeeOptions();
+            renderMessageEmployees();
+            renderAllTasks();
+            alert('Резервная копия успешно восстановлена');
         } catch (error) {
             alert('Не удалось загрузить файл: ' + error.message);
         }

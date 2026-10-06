@@ -8,7 +8,20 @@
 <body>
     <header class="crm-header">
         <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">☰</button>
-        <h1>CRM</h1>
+        <div class="brand-block">
+            <h1>CRM</h1>
+            <span>Рабочее пространство</span>
+        </div>
+        <div class="global-search-wrap">
+            <input id="global-search" type="search" placeholder="Поиск по CRM..." aria-label="Глобальный поиск">
+            <div id="global-search-results" class="global-search-results hidden"></div>
+        </div>
+        <div class="current-user-panel">
+            <label for="current-user-select">Текущий аккаунт</label>
+            <select id="current-user-select" aria-label="Текущий пользователь"></select>
+            <span id="current-user-role" class="current-user-role"></span>
+            <small>Локальная имитация входа</small>
+        </div>
     </header>
 
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
@@ -18,34 +31,50 @@
             <button id="sidebar-close" type="button" aria-label="Закрыть меню">×</button>
         </div>
         <nav class="sidebar-nav">
-            <button type="button" data-nav-target="dashboard">Обзор</button>
-            <button type="button" data-nav-target="clients">Клиенты</button>
-            <button type="button" data-nav-target="all-tasks">Задачи</button>
-            <button type="button" data-nav-target="data-tools">Импорт и экспорт</button>
-            <button type="button" data-nav-target="documents">Документы</button>
-            <button type="button" data-nav-target="settings">Настройки</button>
+            <button type="button" data-nav-target="dashboard"><span class="nav-icon">⌂</span><span>Обзор</span></button>
+            <button type="button" data-nav-target="clients"><span class="nav-icon">♙</span><span>Клиенты</span></button>
+            <button type="button" data-nav-target="all-tasks"><span class="nav-icon">✓</span><span>Задачи</span></button>
+            <button type="button" data-nav-target="messages"><span class="nav-icon">✉</span><span>Сообщения</span></button>
+            <button type="button" data-nav-target="data-tools"><span class="nav-icon">⇄</span><span>Импорт и экспорт</span></button>
+            <button type="button" data-nav-target="documents"><span class="nav-icon">▤</span><span>Документы</span></button>
+            <button type="button" data-nav-target="reports"><span class="nav-icon">▥</span><span>Отчёты</span></button>
+            <button type="button" data-nav-target="settings"><span class="nav-icon">⚙</span><span>Настройки</span></button>
         </nav>
     </aside>
 
     <main class="crm-content">
         <div id="dashboard" class="dashboard-stats">
-            <button class="stat-card stat-card-action" type="button" data-open-task-filter="all">
+            <button class="stat-card stat-card-action stat-card-clients" type="button" data-open-task-filter="all">
+                <span class="stat-icon">♙</span>
                 <span class="stat-label">Всего клиентов</span>
                 <strong id="total-clients-count">0</strong>
             </button>
-            <button class="stat-card stat-card-action" type="button" data-open-client-status="Активен">
+            <button class="stat-card stat-card-action stat-card-active" type="button" data-open-client-status="Активен">
+                <span class="stat-icon">●</span>
                 <span class="stat-label">Активные</span>
                 <strong id="active-clients-count">0</strong>
             </button>
-            <button class="stat-card stat-card-action" type="button" data-open-task-filter="open">
+            <button class="stat-card stat-card-action stat-card-open" type="button" data-open-task-filter="open">
+                <span class="stat-icon">✓</span>
                 <span class="stat-label">Открытые задачи</span>
                 <strong id="open-tasks-count">0</strong>
             </button>
-            <button class="stat-card stat-card-warning stat-card-action" type="button" data-open-task-filter="overdue">
+            <button class="stat-card stat-card-warning stat-card-action stat-card-overdue" type="button" data-open-task-filter="overdue">
+                <span class="stat-icon">!</span>
                 <span class="stat-label">Просроченные</span>
                 <strong id="overdue-tasks-count">0</strong>
             </button>
         </div>
+        <section class="task-attention-section">
+            <div class="section-heading">
+                <div>
+                    <h2>Требуют внимания</h2>
+                    <p>Просроченные задачи и задачи на сегодня</p>
+                </div>
+            </div>
+            <div id="task-attention-list" class="task-attention-list"></div>
+            <p id="empty-task-attention" class="empty-message">Срочных задач нет</p>
+        </section>
         <section class="recent-activity-section">
             <div class="section-heading">
                 <div>
@@ -65,11 +94,18 @@
                 <option value="Активен">Активен</option>
                 <option value="В ожидании">В ожидании</option>
             </select>
+            <select id="client-sort" aria-label="Сортировка клиентов">
+                <option value="default">Порядок добавления</option>
+                <option value="name">По имени</option>
+                <option value="company">По компании</option>
+                <option value="status">По статусу</option>
+                <option value="newest">Сначала новые</option>
+            </select>
         </div>
         <p id="clients-count" class="clients-count"></p>
         <div id="data-tools" class="data-buttons">
-            <button id="export-data-btn" type="button">Сохранить данные</button>
-            <button id="import-data-btn" type="button">Загрузить данные</button>
+            <button id="export-data-btn" type="button">Скачать резервную копию</button>
+            <button id="import-data-btn" type="button">Восстановить из копии</button>
             <input id="import-file-input" type="file" accept=".json,application/json" hidden>
         </div>
         <div id="clients" class="client-list"></div>
@@ -80,8 +116,9 @@
             <div class="section-heading">
                 <div>
                     <h2>Все задачи</h2>
-                    <p>Общий список задач по всем клиентам</p>
+                    <p>Задачи по клиентам и общие задачи</p>
                 </div>
+                <button id="add-general-task-btn" class="add-general-task-button" type="button"><span aria-hidden="true">+</span> Добавить задачу</button>
                 <select id="all-tasks-filter" aria-label="Фильтр задач">
                     <option value="all">Все задачи</option>
                     <option value="open">Только открытые</option>
@@ -133,6 +170,55 @@
             <p id="empty-all-documents" class="empty-message">Документов пока нет</p>
         </section>
 
+        <section id="messages" class="messages-section">
+            <div class="section-heading">
+                <div>
+                    <h2>Сообщения</h2>
+                    <p>Внутренняя переписка сотрудников</p>
+                </div>
+            </div>
+            <div class="messenger-layout">
+                <aside class="conversation-sidebar">
+                    <label class="current-user-field">Я —
+                        <select id="message-current-user"></select>
+                    </label>
+                    <input id="message-search" type="search" placeholder="Поиск сотрудника...">
+                    <div id="message-employee-list" class="message-employee-list"></div>
+                </aside>
+                <div class="conversation-panel">
+                    <div class="conversation-header">
+                        <strong id="message-chat-title">Выберите сотрудника</strong>
+                        <span id="message-chat-subtitle">Чтобы начать переписку</span>
+                    </div>
+                    <div id="message-list" class="message-list"></div>
+                    <p id="empty-message-list" class="empty-message">Сообщений в этой переписке пока нет</p>
+                    <div class="message-form">
+                        <button id="attach-message-file-btn" class="message-tool-button" type="button" aria-label="Прикрепить файл">📎</button>
+                        <input id="message-file-input" type="file" hidden>
+                        <button id="share-message-item-btn" class="message-tool-button" type="button" aria-label="Прикрепить клиента или задачу">+</button>
+                        <textarea id="message-text" placeholder="Напишите сообщение сотруднику..." disabled></textarea>
+                        <button id="send-message-btn" type="button" disabled>Отправить</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="reports" class="reports-section">
+            <div class="section-heading"><div><h2>Отчёты</h2><p>Сводка по клиентам, задачам и активности сотрудников</p></div></div>
+            <div class="report-summary-grid">
+                <article class="report-summary-card"><span>Всего клиентов</span><strong id="report-total-clients">0</strong></article>
+                <article class="report-summary-card"><span>Открытые задачи</span><strong id="report-open-tasks">0</strong></article>
+                <article class="report-summary-card"><span>Завершённые задачи</span><strong id="report-completed-tasks">0</strong></article>
+                <article class="report-summary-card report-summary-warning"><span>Просроченные задачи</span><strong id="report-overdue-tasks">0</strong></article>
+            </div>
+            <div class="reports-grid">
+                <article class="report-card"><h3>Статусы клиентов</h3><div id="client-status-report" class="report-bars"></div></article>
+                <article class="report-card"><h3>Задачи по статусу</h3><div id="task-status-report" class="report-bars"></div></article>
+                <article class="report-card report-card-wide"><h3>Активность сотрудников</h3><div id="employee-activity-report" class="employee-report-list"></div><p id="empty-employee-report" class="empty-message">Активности пока нет</p></article>
+                <article class="report-card report-card-wide"><h3>Последние изменения</h3><div id="change-history-report" class="change-history-report"></div><p id="empty-change-history-report" class="empty-message">Изменений пока нет</p></article>
+            </div>
+        </section>
+
         <section id="settings" class="settings-section">
             <div class="section-heading">
                 <div>
@@ -140,9 +226,25 @@
                     <p>Сотрудники, которых можно назначать ответственными</p>
                 </div>
             </div>
+            <p id="settings-access-notice" class="settings-access-notice hidden"></p>
             <div class="employee-form">
-                <input id="employee-name-input" type="text" placeholder="Имя сотрудника">
-                <button id="add-employee-btn" type="button">Добавить сотрудника</button>
+                <input id="employee-name-input" type="text" placeholder="Имя и фамилия">
+                <input id="employee-position-input" type="text" placeholder="Должность">
+                <input id="employee-phone-input" type="tel" placeholder="Телефон">
+                <input id="employee-email-input" type="email" placeholder="Email">
+                <select id="employee-role-input" aria-label="Роль сотрудника">
+                    <option value="employee">Сотрудник</option>
+                    <option value="manager">Руководитель</option>
+                </select>
+                <select id="employee-status-input">
+                    <option value="Активен">Активен</option>
+                    <option value="Неактивен">Неактивен</option>
+                </select>
+                <textarea id="employee-note-input" placeholder="Заметка о сотруднике"></textarea>
+                <div class="employee-form-buttons">
+                    <button id="add-employee-btn" type="button">Добавить сотрудника</button>
+                    <button id="cancel-employee-edit-btn" class="hidden" type="button">Отмена</button>
+                </div>
             </div>
             <div id="employee-list" class="employee-list"></div>
         </section>
@@ -212,7 +314,7 @@
                 <p><strong>Телефон:</strong> <span id="details-client-phone"></span></p>
                 <p><strong>Email:</strong> <span id="details-client-email"></span></p>
                 <p><strong>Статус:</strong> <span id="details-client-status"></span></p>
-                <p><strong>Ответственный:</strong> <span id="details-client-assignee"></span></p>
+                <p><strong>Ответственный:</strong> <button id="details-client-assignee" class="employee-link" type="button"></button></p>
                 <div class="client-tags-row"><strong>Метки:</strong> <span id="details-client-tags"></span></div>
             </div>
             <section class="details-section">
@@ -270,6 +372,7 @@
             <button id="close-task-details-btn" class="close-button" type="button">×</button>
             <h2 id="details-task-name">Задача</h2>
             <p id="details-task-meta" class="task-hint"></p>
+            <p class="task-hint">Ответственный: <button id="details-task-assignee" class="employee-link" type="button"></button></p>
             <p class="task-hint">Вся история работы именно по этой задаче.</p>
             <section class="details-section task-edit-section">
                 <h3>Данные задачи</h3>
@@ -308,6 +411,63 @@
                 <div id="interaction-list" class="interaction-list"></div>
                 <p id="empty-task-interaction-message" class="empty-message">Записей пока нет</p>
             </section>
+        </div>
+    </div>
+
+    <div id="employee-details" class="modal hidden">
+        <div class="modal-content employee-details-content">
+            <button id="close-employee-details-btn" class="close-button" type="button">×</button>
+            <h2 id="details-employee-name">Сотрудник</h2>
+            <div class="employee-details-info">
+                <p><strong>Должность:</strong> <span id="details-employee-position"></span></p>
+                <p><strong>Телефон:</strong> <span id="details-employee-phone"></span></p>
+                <p><strong>Email:</strong> <span id="details-employee-email"></span></p>
+                <p><strong>Статус:</strong> <span id="details-employee-status"></span></p>
+                <p><strong>Заметка:</strong> <span id="details-employee-note"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="general-task-form" class="modal hidden">
+        <div class="modal-content general-task-content">
+            <button id="close-general-task-btn" class="close-button" type="button">×</button>
+            <h2>Новая общая задача</h2>
+            <label for="general-task-text">Задача:</label>
+            <input id="general-task-text" type="text" placeholder="Например: подготовить отчёт">
+            <label for="general-task-due-date">Срок:</label>
+            <input id="general-task-due-date" type="date">
+            <label for="general-task-priority">Приоритет:</label>
+            <select id="general-task-priority">
+                <option value="low">Низкий</option>
+                <option value="normal" selected>Обычный</option>
+                <option value="high">Высокий</option>
+            </select>
+            <label for="general-task-assignee">Ответственный:</label>
+            <select id="general-task-assignee">
+                <option value="Не назначен">Не назначен</option>
+            </select>
+            <div class="modal-buttons">
+                <button id="save-general-task-btn" type="button">Создать задачу</button>
+                <button id="cancel-general-task-btn" type="button">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="share-message-modal" class="modal hidden">
+        <div class="modal-content share-message-content">
+            <button id="close-share-message-btn" class="close-button" type="button">×</button>
+            <h2>Добавить в сообщение</h2>
+            <label for="share-message-type">Что добавить:</label>
+            <select id="share-message-type">
+                <option value="client">Клиента</option>
+                <option value="task">Задачу</option>
+            </select>
+            <label for="share-message-item">Выберите запись:</label>
+            <select id="share-message-item"></select>
+            <div class="modal-buttons">
+                <button id="confirm-share-message-btn" type="button">Добавить в чат</button>
+                <button id="cancel-share-message-btn" type="button">Отмена</button>
+            </div>
         </div>
     </div>
 
